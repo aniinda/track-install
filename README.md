@@ -51,24 +51,73 @@ track-install show
 
 # Show all installations
 track-install show all
+
+# Show all labels you've created
+track-install show labels
 ```
 
-### Available Aliases
+---
+
+## 📖 Complete Command Reference
+
+### Installation Commands
 ```bash
-ti nginx              # short for track-install
-ts web-stack         # short for track-install show
-ts                   # show default label
+# Basic installation (default label: "server-tools")
+track-install nginx postgresql mysql-server
+
+# Custom single label
+TRACK_LABEL="web-stack" track-install apache2 php
+
+# Multiple labels (comma-separated)
+TRACK_LABEL="db,core,production" track-install redis-server
+
+# Using alias
+ti docker.io git nodejs
+```
+
+### Query Commands
+```bash
+# Show specific label
+track-install show web-stack
+
+# Show default label (server-tools)
+track-install show
+
+# Show all installations
+track-install show all
+
+# Show all labels you've created
+track-install show labels
+```
+
+### Alias Commands
+```bash
+ti nginx mysql-server     # Short for track-install
+ts                       # Show default label
+ts web-stack            # Show specific label  
+ts all                  # Show everything
+ts labels               # Show all your labels
 ```
 
 ---
 
 ## 📋 Example Output
 
+**Package status by label:**
 ```
 === Installations under label: web-stack ===
 nginx                ✓ installed
 apache2              ✓ installed
 php                  ✗ not found
+```
+
+**All your labels:**
+```
+=== All Created Labels ===
+web-stack (3 packages)
+database (2 packages)
+server-tools (5 packages)
+development (4 packages)
 ```
 
 ---
