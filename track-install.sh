@@ -1,87 +1,76 @@
 #!/bin/bash
-# Installation Tracker - save as /usr/local/bin/track-install
 
-INSTALL_LOG="$HOME/.server-installs.log"
+# track-install.sh — Initial setup script for installing track-install system
+# Usage: curl -fsSL https://yourdomain.com/track-install.sh | bash
+
+INSTALL_PATH="/usr/local/bin/track-install"
+LOG_FILE="$HOME/.server-installs.log"
+
+# Create the track-install command
+cat << 'EOF' > "$INSTALL_PATH"
+#!/bin/bash
+
+LOG_FILE="$HOME/.server-installs.log"
 LABEL="${TRACK_LABEL:-server-tools}"
+USER=$(whoami)
+TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
-function install_and_track() {
-    local packages=("$@")
-    
-    # Install packages
-    if command -v apt &> /dev/null; then
-        sudo apt install -y "${packages[@]}"
-        install_status=$?
-    elif command -v yum &> /dev/null; then
-        sudo yum install -y "${packages[@]}"
-        install_status=$?
-    elif command -v dnf &> /dev/null; then
-        sudo dnf install -y "${packages[@]}"
-        install_status=$?
-    else
-        echo "Package manager not found"
-        exit 1
-    fi
-    
-    # Log only if installation was successful
-    if [ $install_status -eq 0 ]; then
-        for package in "${packages[@]}"; do
-            echo "$(date '+%Y-%m-%d %H:%M:%S') | $LABEL | $package | $(whoami)" >> "$INSTALL_LOG"
+# Ensure log file exists
+touch "$LOG_FILE"
+
+# Show log contents
+if [[ "$1" == "show" ]]; then
+    if [[ "$2" == "all" ]]; then
+        echo "=== All Logged Installations ==="
+        awk -F ' *\\| *' '{ print $2 ": " $3 }' "$LOG_FILE"
+    elif [[ "$2" == "labels" ]]; then
+        echo "=== All Created Labels ==="
+        awk -F ' *\\| *' '{ print $2 }' "$LOG_FILE" | sort | uniq | while read -r lbl; do
+            count=$(awk -F ' *\\| *' -v label="$lbl" '$2 == label' "$LOG_FILE" | wc -l)
+            echo "$lbl ($count packages)"
         done
-        echo "Tracked: ${packages[*]} under label '$LABEL'"
+    else
+        LABEL_QUERY="${2:-$LABEL}"
+        echo "=== Installations under label: $LABEL_QUERY ==="
+        awk -F ' *\\| *' -v label="$LABEL_QUERY" '$2 == label { print $3 }' "$LOG_FILE" | while read -r pkg; do
+            dpkg -s "$pkg" &> /dev/null && echo "$pkg                ✓ installed" || echo "$pkg                ✗ not found"
+        done
     fi
-}
+    exit 0
+fi
 
-function show_installs() {
-    if [ ! -f "$INSTALL_LOG" ]; then
-        echo "No installations tracked yet"
-        return
+# Update package lists first
+sudo apt update -qq
+
+# Main logic: handle multiple packages or commands
+for pkg in "$@"; do
+    if sudo apt install -y "$pkg"; then
+        IFS=',' read -ra LABELS <<< "$LABEL"
+        for lbl in "${LABELS[@]}"; do
+            echo "$TIMESTAMP | $lbl | $pkg | $USER" >> "$LOG_FILE"
+        done
+        echo "✅ Installed and tracked: $pkg"
+    else
+        echo "❌ Failed to install: $pkg"
     fi
-    
-    local search_label="${1:-$LABEL}"
-    echo "=== Installations under label: $search_label ==="
-    grep "| $search_label |" "$INSTALL_LOG" | while IFS='|' read -r date label package user; do
-        package=$(echo "$package" | xargs)  # trim whitespace
-        # Check if still installed
-        if command -v apt &> /dev/null && dpkg -l | grep -q "^ii.*$package "; then
-            status="✓ installed"
-        elif command -v rpm &> /dev/null && rpm -q "$package" &>/dev/null; then
-            status="✓ installed" 
-        else
-            status="? check manually"
-        fi
-        printf "%-20s %s (%s)\n" "$package" "$status" "$(echo $date | xargs)"
-    done
-}
+done
+EOF
 
-function list_all() {
-    if [ ! -f "$INSTALL_LOG" ]; then
-        echo "No installations tracked yet"
-        return
-    fi
-    
-    echo "=== All tracked installations ==="
-    sort "$INSTALL_LOG" | while IFS='|' read -r date label package user; do
-        printf "%s | %-15s | %s\n" "$(echo $date | xargs)" "$(echo $label | xargs)" "$(echo $package | xargs)"
-    done
-}
+# Make executable
+chmod +x "$INSTALL_PATH"
 
-# Main command
-case "$1" in
-    "")
-        if [ $# -eq 0 ]; then
-            echo "Usage: track-install <packages...>  OR  track-install show [label]  OR  track-install all"
-            echo "Set TRACK_LABEL environment variable to change label (default: server-tools)"
-        else
-            install_and_track "$@"
-        fi
-        ;;
-    "show")
-        show_installs "$2"
-        ;;
-    "all")
-        list_all
-        ;;
-    *)
-        install_and_track "$@"
-        ;;
-esac
+# Optional: add aliases
+if ! grep -q "alias ti=" ~/.bashrc; then
+    echo "alias ti='track-install'" >> ~/.bashrc
+    echo "alias ts='track-install show'" >> ~/.bashrc
+    echo "alias ta='track-install all'" >> ~/.bashrc
+    echo "✅ Aliases added to ~/.bashrc (ti, ts, ta)"
+fi
+
+echo "✅ track-install is now available as a global command."
+echo "📄 Log file: $LOG_FILE"
+echo "ℹ️ Usage examples:"
+echo "   TRACK_LABEL=\"web,nginx\" track-install nginx curl"
+echo "   track-install show web"
+echo "   track-install show labels"
+echo "   track-install show all"
